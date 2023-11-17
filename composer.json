@@ -1,5 +1,30 @@
 {
+    "name": "localzet/proxy",
+    "description": "Localzet Proxy - HTTP Прокси-сервер.",
+    "type": "library",
+    "keywords": [
+        "localzet"
+    ],
+    "license": "AGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Ivan Zorin",
+            "email": "creator@localzet.com",
+            "homepage": "https://www.localzet.com",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "email": "support@localzet.com",
+        "issues": "https://github.com/localzet/proxy/issues",
+        "source": "https://github.com/localzet/proxy"
+    },
     "require": {
         "localzet/server": "^4.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "localzet\\": "src"
+        }
     }
 }
