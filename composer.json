@@ -1,0 +1,5 @@
+{
+    "require": {
+        "localzet/server": "^4.1"
+    }
+}
