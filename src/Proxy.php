@@ -25,8 +25,7 @@ class Proxy extends Server
     public function __construct(string $socketName = null, array $socketContext = [])
     {
         parent::__construct($socketName, $socketContext);
-        $this->onMessage = function($connection, $buffer)
-        {
+        $this->onMessage = function ($connection, $buffer) {
             list($method, $addr,) = explode(' ', $buffer);
             $url_data = parse_url($addr);
             $host = $url_data['host'];
