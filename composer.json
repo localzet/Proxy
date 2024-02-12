@@ -8,16 +8,16 @@
   "license": "AGPL-3.0-or-later",
   "authors": [
     {
+      "role": "Developer",
       "name": "Ivan Zorin",
       "email": "creator@localzet.com",
-      "homepage": "https://www.localzet.com",
-      "role": "Developer"
+      "homepage": "https://github.com/localzet"
     }
   ],
   "support": {
     "email": "support@localzet.com",
-    "issues": "https://github.com/localzet/proxy/issues",
-    "source": "https://github.com/localzet/proxy"
+    "issues": "https://github.com/localzet/Proxy/issues",
+    "source": "https://github.com/localzet/Proxy"
   },
   "require": {
     "localzet/server": "^4.1"
