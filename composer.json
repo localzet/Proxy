@@ -1,9 +1,15 @@
 {
   "name": "localzet/proxy",
-  "description": "Localzet Proxy - HTTP Прокси-сервер.",
+  "description": "Localzet Proxy is an HTTP proxy server developed by Localzet. It provides functionality for efficient and secure redirection of HTTP requests.",
   "type": "library",
   "keywords": [
-    "localzet"
+    "HTTP",
+    "proxy",
+    "server",
+    "PHP",
+    "library",
+    "localzet",
+    "AGPL"
   ],
   "license": "AGPL-3.0-or-later",
   "authors": [
