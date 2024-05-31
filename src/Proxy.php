@@ -7,17 +7,17 @@ class Proxy extends Server
     /**
      * @inheritdoc
      */
-    public string $name = 'Localzet Proxy';
+    private string $name = 'Localzet Proxy';
 
     /**
      * @inheritdoc
      */
-    public int $count = 6;
+    private int $count = 6;
 
     /**
      * @inheritdoc
      */
-    public $onMessage = null;
+    private $onMessage = null;
 
     /**
      * @inheritdoc
@@ -28,6 +28,12 @@ class Proxy extends Server
         $this->onMessage = function ($connection, $buffer) {
             list($method, $addr,) = explode(' ', $buffer);
             $url_data = parse_url($addr);
+
+            if (!isset($url_data['host'])) {
+                // Обработка ошибки
+                return;
+            }
+
             $host = $url_data['host'];
             $port = $url_data['port'] ?? 80;
             $addr = "$host:$port";
@@ -42,6 +48,11 @@ class Proxy extends Server
 
             $remote_connection->pipe($connection);
             $connection->pipe($remote_connection);
+
+            $remote_connection->onError = function($connection, $code, $message) {
+                // Обработка ошибки
+            };
+
             $remote_connection->connect();
         };
     }
