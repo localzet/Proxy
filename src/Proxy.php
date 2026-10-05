@@ -1,5 +1,13 @@
 <?php
 
+/**
+ * @package Localzet Proxy
+ * @link https://github.com/localzet/Proxy
+ * @author Ivan Zorin <creator@localzet.com>
+ * @copyright Copyright (c) 2026 Localzet Group
+ * @license https://www.gnu.org/licenses/agpl-3.0 GNU Affero General Public License v3.0 or later
+ */
+
 namespace localzet;
 
 class Proxy extends Server
@@ -7,22 +15,22 @@ class Proxy extends Server
     /**
      * @inheritdoc
      */
-    private string $name = 'Localzet Proxy';
+    public string $name = 'Localzet Proxy';
 
     /**
      * @inheritdoc
      */
-    private int $count = 6;
+    public int $count = 6;
 
     /**
      * @inheritdoc
      */
-    private $onMessage = null;
+    public $onMessage = null;
 
     /**
      * @inheritdoc
      */
-    public function __construct(string $socketName = null, array $socketContext = [])
+    public function __construct(?string $socketName = null, array $socketContext = [])
     {
         parent::__construct($socketName, $socketContext);
         $this->onMessage = function ($connection, $buffer) {
