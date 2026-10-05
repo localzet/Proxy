@@ -1,6 +1,6 @@
 {
   "name": "localzet/proxy",
-  "description": "Localzet Proxy is an HTTP proxy server developed by Localzet. It provides functionality for efficient and secure redirection of HTTP requests.",
+  "description": "Experimental HTTP forward proxy built on Localzet Server.",
   "type": "library",
   "keywords": [
     "HTTP",
@@ -26,11 +26,16 @@
     "source": "https://github.com/localzet/Proxy"
   },
   "require": {
-    "localzet/server": "^4.1"
+    "localzet/server": "^4.1",
+    "php": ">=8.1"
   },
   "autoload": {
     "psr-4": {
       "localzet\\": "src"
     }
+  },
+  "scripts": {
+    "test": "php tests/regression.php",
+    "lint": "find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l"
   }
 }
