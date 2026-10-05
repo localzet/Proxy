@@ -1,21 +1,44 @@
-<p align="center"><a href="https://www.localzet.com" target="_blank">
-  <img src="https://static.zorin.space/media/logos/ZorinProjectsSP.svg" width="400">
-</a></p>
+# Localzet Proxy
 
-<p align="center">
-  <a href="https://packagist.org/packages/localzet/proxy">
-  <img src="https://img.shields.io/packagist/dt/localzet/proxy?label=%D0%A1%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D1%8F" alt="Скачивания">
-</a>
-  <a href="https://github.com/localzet/proxy">
-  <img src="https://img.shields.io/github/commit-activity/t/localzet/proxy?label=%D0%9A%D0%BE%D0%BC%D0%BC%D0%B8%D1%82%D1%8B" alt="Коммиты">
-</a>
-  <a href="https://packagist.org/packages/localzet/proxy">
-  <img src="https://img.shields.io/packagist/v/localzet/proxy?label=%D0%92%D0%B5%D1%80%D1%81%D0%B8%D1%8F" alt="Версия">
-</a>
-  <a href="https://packagist.org/packages/localzet/proxy">
-  <img src="https://img.shields.io/packagist/dependency-v/localzet/proxy/php?label=PHP" alt="Версия PHP">
-</a>
-  <a href="https://github.com/localzet/proxy">
-  <img src="https://img.shields.io/github/license/localzet/proxy?label=%D0%9B%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F" alt="Лицензия">
-</a>
-</p>
+[Русская документация](README.ru.md)
+
+Experimental HTTP forward proxy built on Localzet Server.
+
+## Status and compatibility
+
+Class loading and writable Server configuration are regression-tested. Authentication, destination policy, CONNECT establishment, failure responses and full HTTP framing need further work before an untrusted deployment.
+
+This is a Server 4.x component; Server 7.x compatibility is not established.
+
+## Dependencies
+
+- `php`: `>=8.1`
+
+- `localzet/server`: `^4.1`
+
+## Installation
+
+```sh
+composer require localzet/proxy
+```
+
+## Development checks
+
+```sh
+composer validate --strict
+composer install
+composer dump-autoload --optimize --strict-psr
+composer lint
+composer test
+```
+
+Installation, lint and autoload checks do not establish end-to-end behavior or production readiness.
+
+[Historical usage notes](docs/legacy-readme.md) need verification against the current API.
+
+## Author and license
+
+Ivan Zorin (`localzet`), <creator@localzet.com>, https://www.localzet.com.
+Source: https://github.com/localzet/Proxy. AGPL-3.0-or-later; [LICENSE](LICENSE). Original copyright and third-party licenses remain applicable.
+
+[Authors](.github/AUTHORS.md) · [Contributing](.github/CONTRIBUTING.md) · [Security](.github/SECURITY.md)
