@@ -1,12 +1,28 @@
 <?php
 
 /**
- * @package Localzet Proxy
- * @link https://github.com/localzet/Proxy
- * @author Ivan Zorin <creator@localzet.com>
- * @copyright Copyright (c) 2026 Localzet Group
- * @license https://www.gnu.org/licenses/agpl-3.0 GNU Affero General Public License v3.0 or later
- */
+ * @package     Localzet Proxy
+ * @link        https://github.com/localzet/Proxy
+ *
+ * @author      Ivan Zorin <creator@localzet.com>
+ * @copyright   Copyright © 2016-2026 Localzet Group. All rights reserved.
+ * @license     https://www.gnu.org/licenses/agpl-3.0 GNU Affero General Public License v3.0
+ *
+ *              This program is free software: you can redistribute it and/or modify
+ *              it under the terms of the GNU Affero General Public License as published
+ *              by the Free Software Foundation, either version 3 of the License, or
+ *              (at your option) any later version.
+ *
+ *              This program is distributed in the hope that it will be useful,
+ *              but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *              GNU Affero General Public License for more details.
+ *
+ *              You should have received a copy of the GNU Affero General Public License
+ *              along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ *              For any questions, please contact <creator@localzet.com>
+*/
 
 namespace localzet;
 
@@ -22,6 +38,12 @@ class Proxy extends Server
      */
     public int $count = 6;
 
+    /** @var list<string> Exact host names allowed for outbound connections. */
+    public array $allowedHosts = [];
+
+    /** @var list<int> Destination ports allowed for outbound connections. */
+    public array $allowedPorts = [80, 443];
+
     /**
      * @inheritdoc
      */
@@ -34,34 +56,64 @@ class Proxy extends Server
     {
         parent::__construct($socketName, $socketContext);
         $this->onMessage = function ($connection, $buffer) {
-            list($method, $addr,) = explode(' ', $buffer);
-            $url_data = parse_url($addr);
-
-            if (!isset($url_data['host'])) {
-                // Обработка ошибки
+            $requestLine = strtok($buffer, "\r\n");
+            $parts = $requestLine === false ? [] : explode(' ', trim($requestLine), 3);
+            if (count($parts) !== 3 || $parts[0] === '' || $parts[1] === '') {
+                $connection->close("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
                 return;
             }
 
-            $host = $url_data['host'];
-            $port = $url_data['port'] ?? 80;
-            $addr = "$host:$port";
-
-            $remote_connection = new Server\Connection\AsyncTcpConnection("tcp://$addr");
-
+            [$method, $target] = $parts;
             if ($method === 'CONNECT') {
-                $connection->send("HTTP/1.1 200 Connection Established\r\n\r\n");
+                $targetData = parse_url('tcp://' . $target);
             } else {
-                $remote_connection->send($buffer);
+                $targetData = parse_url($target);
+                if (($targetData['scheme'] ?? null) !== 'http') {
+                    $connection->close("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+                    return;
+                }
             }
 
-            $remote_connection->pipe($connection);
-            $connection->pipe($remote_connection);
+            if (!is_array($targetData)) {
+                $connection->close("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+                return;
+            }
 
-            $remote_connection->onError = function($connection, $code, $message) {
-                // Обработка ошибки
+            $host = strtolower(rtrim($targetData['host'] ?? '', '.'));
+            $port = $targetData['port'] ?? ($method === 'CONNECT' ? null : 80);
+            if ($host === '' || !is_int($port) || $port < 1 || $port > 65535 || !$this->isDestinationAllowed($host, $port)) {
+                $connection->close("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+                return;
+            }
+
+            $remoteConnection = new Server\Connection\AsyncTcpConnection("tcp://$host:$port");
+            $remoteConnection->onError = static function ($remoteConnection, $code, $message) use ($connection) {
+                $connection->close("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
             };
 
-            $remote_connection->connect();
+            $remoteConnection->onConnect = static function ($remoteConnection) use ($connection, $method, $buffer) {
+                if ($method === 'CONNECT') {
+                    $connection->send("HTTP/1.1 200 Connection Established\r\n\r\n");
+                } else {
+                    $remoteConnection->send($buffer);
+                }
+
+                $remoteConnection->pipe($connection);
+                $connection->pipe($remoteConnection);
+            };
+
+            $remoteConnection->connect();
         };
+    }
+
+    public function isDestinationAllowed(string $host, int $port): bool
+    {
+        $allowedHosts = array_map(
+            static fn (string $allowedHost): string => strtolower(rtrim($allowedHost, '.')),
+            $this->allowedHosts
+        );
+
+        return in_array(strtolower(rtrim($host, '.')), $allowedHosts, true)
+            && in_array($port, $this->allowedPorts, true);
     }
 }
