@@ -19,8 +19,11 @@ This release targets Localzet Server 7.x. The forwarder has no built-in client a
 ## Installation
 
 ```sh
-composer require localzet/proxy
+composer config repositories.localzet-proxy vcs https://github.com/localzet/Proxy
+composer require localzet/proxy:dev-main
 ```
+
+The package is not published on Packagist yet; this VCS source installs the current Server 7 branch.
 
 ## Development checks
 

@@ -19,8 +19,11 @@
 ## Установка
 
 ```sh
-composer require localzet/proxy
+composer config repositories.localzet-proxy vcs https://github.com/localzet/Proxy
+composer require localzet/proxy:dev-main
 ```
+
+Пакет пока не опубликован в Packagist; указанный VCS source устанавливает текущую ветку Server 7.
 
 ## Проверки разработки
 
