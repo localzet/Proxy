@@ -42,6 +42,10 @@ $proxy->allowedHosts = ['127.0.0.1'];
 if (!$proxy->isDestinationAllowed('127.0.0.1', 80) || $proxy->isDestinationAllowed('127.0.0.1', 22)) {
     throw new RuntimeException('Proxy destination policy did not enforce configured host and port.');
 }
+$proxy->allowedHosts = ['::1'];
+if (!$proxy->isDestinationAllowed('[::1]', 80)) {
+    throw new RuntimeException('Bracketed IPv6 request hosts must match literal IPv6 allowlist entries.');
+}
 $proxy->allowedHosts = ['example.com'];
 if ($proxy->isDestinationAllowed('example.com', 80)) {
     throw new RuntimeException('Domain targets must be rejected until DNS resolution can be pinned safely.');
