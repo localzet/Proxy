@@ -100,11 +100,12 @@ class Proxy extends Server
                 $connection->close("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
             };
 
-            $remoteConnection->onConnect = static function ($remoteConnection) use ($connection, $method, $buffer) {
+            $forwardedBuffer = $method === 'CONNECT' ? '' : $this->stripProxyHeaders($buffer);
+            $remoteConnection->onConnect = static function ($remoteConnection) use ($connection, $method, $forwardedBuffer) {
                 if ($method === 'CONNECT') {
                     $connection->send("HTTP/1.1 200 Connection Established\r\n\r\n");
                 } else {
-                    $remoteConnection->send($buffer);
+                    $remoteConnection->send($forwardedBuffer);
                 }
 
                 $remoteConnection->pipe($connection);
@@ -153,5 +154,22 @@ class Proxy extends Server
         }
 
         return false;
+    }
+
+    private function stripProxyHeaders(string $request): string
+    {
+        $separator = strpos($request, "\r\n\r\n");
+        if ($separator === false) {
+            return $request;
+        }
+
+        $headers = explode("\r\n", substr($request, 0, $separator));
+        $headers = array_values(array_filter(
+            $headers,
+            static fn (string $header): bool => stripos($header, 'Proxy-Authorization:') !== 0
+                && stripos($header, 'Proxy-Connection:') !== 0,
+        ));
+
+        return implode("\r\n", $headers) . "\r\n\r\n" . substr($request, $separator + 4);
     }
 }

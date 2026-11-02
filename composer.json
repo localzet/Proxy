@@ -1,6 +1,6 @@
 {
   "name": "localzet/proxy",
-  "description": "Experimental HTTP forward proxy built on Localzet Server.",
+  "description": "HTTP forward proxy with Basic authentication and an IP/port allowlist, built on Localzet Server.",
   "type": "library",
   "keywords": [
     "HTTP",
