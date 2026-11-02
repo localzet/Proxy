@@ -33,23 +33,36 @@ if (!$proxy instanceof localzet\Server || !is_callable($proxy->onMessage)) {
 }
 $proxy->name = 'regression';
 $proxy->count = 1;
+$proxy->username = 'integration-user';
+$proxy->password = 'integration-password';
 if ($proxy->name !== 'regression' || $proxy->count !== 1) {
     throw new RuntimeException('Inherited server configuration is not writable.');
 }
-$proxy->allowedHosts = ['example.com'];
-if (!$proxy->isDestinationAllowed('EXAMPLE.COM.', 80) || $proxy->isDestinationAllowed('example.com', 22)) {
+$proxy->allowedHosts = ['127.0.0.1'];
+if (!$proxy->isDestinationAllowed('127.0.0.1', 80) || $proxy->isDestinationAllowed('127.0.0.1', 22)) {
     throw new RuntimeException('Proxy destination policy did not enforce configured host and port.');
 }
-$proxy->allowedHosts = [];
+$proxy->allowedHosts = ['example.com'];
 if ($proxy->isDestinationAllowed('example.com', 80)) {
+    throw new RuntimeException('Domain targets must be rejected until DNS resolution can be pinned safely.');
+}
+$proxy->allowedHosts = [];
+if ($proxy->isDestinationAllowed('127.0.0.1', 80)) {
     throw new RuntimeException('Proxy must deny outbound destinations until an allowlist is configured.');
 }
 $connection = new class {
     public string $response = '';
     public function close(string $response = ''): bool { $this->response = $response; return true; }
 };
-($proxy->onMessage)($connection, "GET http://example.com/ HTTP/1.1\r\n\r\n");
+$proxy->allowedHosts = ['192.0.2.1'];
+$authorization = base64_encode('integration-user:integration-password');
+($proxy->onMessage)($connection, "GET http://127.0.0.1/ HTTP/1.1\r\nProxy-Authorization: Basic $authorization\r\n\r\n");
 if (!str_starts_with($connection->response, 'HTTP/1.1 403 Forbidden')) {
     throw new RuntimeException('Proxy must reject requests outside the configured destination allowlist.');
+}
+$connection->response = '';
+($proxy->onMessage)($connection, "GET http://127.0.0.1/ HTTP/1.1\r\n\r\n");
+if (!str_starts_with($connection->response, 'HTTP/1.1 407 Proxy Authentication Required')) {
+    throw new RuntimeException('Proxy must require authentication before checking destinations.');
 }
 echo "Proxy class compatibility regression passed.\n";

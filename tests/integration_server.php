@@ -18,5 +18,7 @@ $proxy = new Proxy("tcp://127.0.0.1:$proxyPort");
 $proxy->count = 1;
 $proxy->allowedHosts = ['127.0.0.1'];
 $proxy->allowedPorts = [$targetPort, $closedPort];
+$proxy->username = 'integration-user';
+$proxy->password = 'integration-password';
 
 Server::runAll();

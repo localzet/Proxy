@@ -46,6 +46,11 @@ def request(proxy_port, request_bytes):
     return sock
 
 
+def authorized(headers=b''):
+    credentials = b'integration-user:integration-password'
+    return b'Proxy-Authorization: Basic ' + __import__('base64').b64encode(credentials) + b'\r\n' + headers
+
+
 def main():
     target_port, proxy_port, closed_port = free_port(), free_port(), free_port()
     listener = socket.socket()
@@ -91,13 +96,13 @@ def main():
         else:
             raise RuntimeError("Proxy listener did not start")
 
-        with request(proxy_port, f"GET http://127.0.0.1:{target_port}/ HTTP/1.1\r\nHost: 127.0.0.1:{target_port}\r\n\r\n".encode()) as sock:
+        with request(proxy_port, f"GET http://127.0.0.1:{target_port}/ HTTP/1.1\r\n".encode() + authorized(f"Host: 127.0.0.1:{target_port}\r\n\r\n".encode())) as sock:
             sock.settimeout(3)
             response = read_response(sock)
             if not response.startswith(b"GET http://127.0.0.1:"):
                 raise RuntimeError(f"Allowed HTTP request did not reach the target: {response!r}")
 
-        with request(proxy_port, f"CONNECT 127.0.0.1:{target_port} HTTP/1.1\r\nHost: 127.0.0.1:{target_port}\r\n\r\n".encode()) as sock:
+        with request(proxy_port, f"CONNECT 127.0.0.1:{target_port} HTTP/1.1\r\n".encode() + authorized(f"Host: 127.0.0.1:{target_port}\r\n\r\n".encode())) as sock:
             sock.settimeout(3)
             response = read_response(sock)
             if not response.startswith(b"HTTP/1.1 200 Connection Established\r\n\r\n"):
@@ -107,22 +112,26 @@ def main():
             if sock.recv(len(marker)) != marker:
                 raise RuntimeError("CONNECT tunnel did not relay bidirectional bytes")
 
-        with request(proxy_port, b"CONNECT 127.0.0.1:22 HTTP/1.1\r\n\r\n") as sock:
+        with request(proxy_port, b"CONNECT 127.0.0.1:22 HTTP/1.1\r\n" + authorized(b"\r\n")) as sock:
             response = read_response(sock)
             if not response.startswith(b"HTTP/1.1 403 Forbidden"):
                 raise RuntimeError(f"Disallowed CONNECT did not return 403: {response!r}")
 
-        with request(proxy_port, b"GET /relative HTTP/1.1\r\n\r\n") as sock:
+        with request(proxy_port, b"GET /relative HTTP/1.1\r\n" + authorized(b"\r\n")) as sock:
             response = read_response(sock)
             if not response.startswith(b"HTTP/1.1 400 Bad Request"):
                 raise RuntimeError(f"Malformed request did not return 400: {response!r}")
 
-        with request(proxy_port, f"CONNECT 127.0.0.1:{closed_port} HTTP/1.1\r\n\r\n".encode()) as sock:
+        with request(proxy_port, f"CONNECT 127.0.0.1:{closed_port} HTTP/1.1\r\n".encode() + authorized(b"\r\n")) as sock:
             response = read_response(sock)
             if not response.startswith(b"HTTP/1.1 502 Bad Gateway"):
                 raise RuntimeError(f"Failed upstream did not return 502: {response!r}")
 
-        print("Proxy loopback integration checks passed: HTTP, CONNECT, allowlist, malformed request, upstream failure.")
+        with request(proxy_port, f"CONNECT 127.0.0.1:{target_port} HTTP/1.1\r\n\r\n".encode()) as sock:
+            if not read_response(sock).startswith(b"HTTP/1.1 407 Proxy Authentication Required"):
+                raise RuntimeError("Unauthenticated requests must be rejected.")
+
+        print("Proxy loopback integration checks passed: Basic auth, HTTP, CONNECT, allowlist, malformed request, upstream failure.")
     finally:
         process.terminate()
         try:

@@ -2,13 +2,13 @@
 
 [Русская документация](README.ru.md)
 
-Experimental HTTP forward proxy built on Localzet Server.
+HTTP forward proxy built on Localzet Server with Basic authentication and an IP/port allowlist.
 
 ## Status and compatibility
 
-Class loading and writable Server configuration are regression-tested. The configured destination policy is regression-tested. Client authentication, complete HTTP framing and end-to-end CONNECT tests still need work before untrusted deployment.
+Local tests cover Basic authentication, HTTP forwarding, CONNECT tunneling, destination allowlists, malformed requests and upstream failures.
 
-This release targets Localzet Server 7.x. The forwarder has no built-in client authentication. Configure `allowedHosts` and `allowedPorts` before use. The policy matches exact host names and ports; it does not resolve DNS or prevent a permitted name from resolving to a private address. Bind it to a trusted network and enforce egress ACLs at the network boundary; do not expose it as a public proxy.
+This version targets Localzet Server 7.x. Set non-empty `username` and `password`, and configure `allowedHosts` and `allowedPorts` before starting. Basic credentials are sent in clear text by HTTP; expose the proxy only over a trusted encrypted network or behind a TLS terminator. Allowed destinations must be literal IPv4/IPv6 addresses: domain names are rejected because this implementation does not pin asynchronous DNS results. Apply network egress rules as a second boundary. The proxy is not a general-purpose HTTP parser and supports one request per client connection.
 
 ## Dependencies
 

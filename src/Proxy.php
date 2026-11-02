@@ -44,6 +44,10 @@ class Proxy extends Server
     /** @var list<int> Destination ports allowed for outbound connections. */
     public array $allowedPorts = [80, 443];
 
+    public string $username = '';
+
+    public string $password = '';
+
     /**
      * @inheritdoc
      */
@@ -58,8 +62,13 @@ class Proxy extends Server
         $this->onMessage = function ($connection, $buffer) {
             $requestLine = strtok($buffer, "\r\n");
             $parts = $requestLine === false ? [] : explode(' ', trim($requestLine), 3);
-            if (count($parts) !== 3 || $parts[0] === '' || $parts[1] === '') {
+            if (count($parts) !== 3 || $parts[0] === '' || $parts[1] === '' || !in_array($parts[0], ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'CONNECT'], true)) {
                 $connection->close("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+                return;
+            }
+
+            if (!$this->isAuthorized($buffer)) {
+                $connection->close("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"Localzet Proxy\"\r\nConnection: close\r\n\r\n");
                 return;
             }
 
@@ -108,12 +117,41 @@ class Proxy extends Server
 
     public function isDestinationAllowed(string $host, int $port): bool
     {
+        $host = strtolower(rtrim($host, '.'));
+        if (filter_var($host, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+
         $allowedHosts = array_map(
             static fn (string $allowedHost): string => strtolower(rtrim($allowedHost, '.')),
             $this->allowedHosts
         );
 
-        return in_array(strtolower(rtrim($host, '.')), $allowedHosts, true)
+        return in_array($host, $allowedHosts, true)
             && in_array($port, $this->allowedPorts, true);
+    }
+
+    private function isAuthorized(string $request): bool
+    {
+        if ($this->username === '' || $this->password === '') {
+            return false;
+        }
+
+        foreach (preg_split('/\r?\n/', $request) ?: [] as $line) {
+            if (stripos($line, 'Proxy-Authorization:') !== 0) {
+                continue;
+            }
+
+            $value = trim(substr($line, strlen('Proxy-Authorization:')));
+            if (preg_match('/^Basic\s+([A-Za-z0-9+\/=]+)$/i', $value, $match) !== 1) {
+                return false;
+            }
+
+            $credentials = base64_decode($match[1], true);
+            return $credentials !== false
+                && hash_equals($this->username . ':' . $this->password, $credentials);
+        }
+
+        return false;
     }
 }
