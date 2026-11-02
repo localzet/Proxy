@@ -118,13 +118,13 @@ class Proxy extends Server
 
     public function isDestinationAllowed(string $host, int $port): bool
     {
-        $host = strtolower(rtrim($host, '.'));
+        $host = self::normalizeHost($host);
         if (filter_var($host, FILTER_VALIDATE_IP) === false) {
             return false;
         }
 
         $allowedHosts = array_map(
-            static fn (string $allowedHost): string => strtolower(rtrim($allowedHost, '.')),
+            self::normalizeHost(...),
             $this->allowedHosts
         );
 
@@ -171,5 +171,14 @@ class Proxy extends Server
         ));
 
         return implode("\r\n", $headers) . "\r\n\r\n" . substr($request, $separator + 4);
+    }
+
+    private static function normalizeHost(string $host): string
+    {
+        if (str_starts_with($host, '[') && str_ends_with($host, ']')) {
+            $host = substr($host, 1, -1);
+        }
+
+        return strtolower(rtrim($host, '.'));
     }
 }
