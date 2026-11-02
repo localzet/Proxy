@@ -101,6 +101,8 @@ def main():
             response = read_response(sock)
             if not response.startswith(b"GET http://127.0.0.1:"):
                 raise RuntimeError(f"Allowed HTTP request did not reach the target: {response!r}")
+            if b"Proxy-Authorization:" in response or b"Proxy-Connection:" in response:
+                raise RuntimeError("Proxy-only authentication or connection headers leaked to the target.")
 
         with request(proxy_port, f"CONNECT 127.0.0.1:{target_port} HTTP/1.1\r\n".encode() + authorized(f"Host: 127.0.0.1:{target_port}\r\n\r\n".encode())) as sock:
             sock.settimeout(3)
@@ -131,7 +133,7 @@ def main():
             if not read_response(sock).startswith(b"HTTP/1.1 407 Proxy Authentication Required"):
                 raise RuntimeError("Unauthenticated requests must be rejected.")
 
-        print("Proxy loopback integration checks passed: Basic auth, HTTP, CONNECT, allowlist, malformed request, upstream failure.")
+        print("Proxy loopback integration checks passed: Basic auth isolation, HTTP, CONNECT, allowlist, malformed request, upstream failure.")
     finally:
         process.terminate()
         try:
