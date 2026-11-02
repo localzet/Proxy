@@ -6,9 +6,9 @@ HTTP forward proxy built on Localzet Server with Basic authentication and an IP/
 
 ## Status and compatibility
 
-Current release: `1.0.1`. Tests cover Basic authentication, removal of proxy-only headers before HTTP forwarding, CONNECT tunneling, destination allowlists, malformed requests and upstream failures. GitHub Actions checks PHP 8.1–8.5.
+Current release: `1.0.2`. Tests cover Basic authentication, removal of proxy-only headers before HTTP forwarding, CONNECT tunneling, IPv4/IPv6 destination allowlists, malformed requests and upstream failures. GitHub Actions checks PHP 8.1–8.5.
 
-This version targets Localzet Server 7.x. Set non-empty `username` and `password`, and configure `allowedHosts` and `allowedPorts` before starting. Basic credentials are sent in clear text by HTTP; expose the proxy only over a trusted encrypted network or behind a TLS terminator. Allowed destinations must be literal IPv4/IPv6 addresses: domain names are rejected because this implementation does not pin asynchronous DNS results. Apply network egress rules as a second boundary. The proxy is not a general-purpose HTTP parser and supports one request per client connection.
+This version targets Localzet Server 7.x. Set non-empty `username` and `password`, and configure `allowedHosts` and `allowedPorts` before starting. Basic credentials are sent in clear text by HTTP; expose the proxy only over a trusted encrypted network or behind a TLS terminator. Allowed destinations must be literal IPv4/IPv6 addresses: write IPv6 in brackets in request URIs (for example, `[2001:db8::1]`) and without brackets in `allowedHosts`. Domain names are rejected because this implementation does not pin asynchronous DNS results. Apply network egress rules as a second boundary. The proxy is not a general-purpose HTTP parser and supports one request per client connection.
 
 ## Dependencies
 
