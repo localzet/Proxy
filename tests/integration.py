@@ -104,6 +104,27 @@ def main():
             if b"Proxy-Authorization:" in response or b"Proxy-Connection:" in response:
                 raise RuntimeError("Proxy-only authentication or connection headers leaked to the target.")
 
+        with socket.create_connection(("127.0.0.1", proxy_port), timeout=3) as sock:
+            sock.settimeout(3)
+            request_line = f"GET http://127.0.0.1:{target_port}/fragmented HTTP/1.1\r\n".encode()
+            sock.sendall(request_line + authorized())
+            time.sleep(0.1)
+            sock.sendall(f"Host: 127.0.0.1:{target_port}\r\n\r\n".encode())
+            response = read_response(sock)
+            if not response.startswith(b"GET http://127.0.0.1:"):
+                raise RuntimeError(f"Fragmented HTTP request did not reach the target: {response!r}")
+            if b"Proxy-Authorization:" in response:
+                raise RuntimeError("Fragmented proxy authentication header leaked to the target.")
+
+        with socket.create_connection(("127.0.0.1", proxy_port), timeout=3) as sock:
+            sock.sendall(f"GET http://127.0.0.1:{target_port}/slow HTTP/1.1\r\n".encode())
+            time.sleep(3.2)
+            sock.sendall(authorized())
+            sock.settimeout(2.5)
+            response = read_response(sock)
+            if not response.startswith(b"HTTP/1.1 408 Request Timeout"):
+                raise RuntimeError(f"Slow request headers did not time out: {response!r}")
+
         with request(proxy_port, f"CONNECT 127.0.0.1:{target_port} HTTP/1.1\r\n".encode() + authorized(f"Host: 127.0.0.1:{target_port}\r\n\r\n".encode())) as sock:
             sock.settimeout(3)
             response = read_response(sock)
@@ -133,7 +154,7 @@ def main():
             if not read_response(sock).startswith(b"HTTP/1.1 407 Proxy Authentication Required"):
                 raise RuntimeError("Unauthenticated requests must be rejected.")
 
-        print("Proxy loopback integration checks passed: Basic auth isolation, HTTP, CONNECT, allowlist, malformed request, upstream failure.")
+        print("Proxy loopback integration checks passed: Basic auth isolation, fragmented and timed headers, HTTP, CONNECT, allowlist, malformed request, upstream failure.")
     finally:
         process.terminate()
         try:

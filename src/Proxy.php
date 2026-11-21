@@ -28,6 +28,10 @@ namespace localzet;
 
 class Proxy extends Server
 {
+    private const MAX_REQUEST_HEADER_SIZE = 16_384;
+    private const REQUEST_HEADER_TIMEOUT = 5.0;
+    private const DEFAULT_MAX_CONNECTIONS = 256;
+
     /**
      * @inheritdoc
      */
@@ -59,7 +63,46 @@ class Proxy extends Server
     public function __construct(?string $socketName = null, array $socketContext = [])
     {
         parent::__construct($socketName, $socketContext);
+        $this->maxConnections = self::DEFAULT_MAX_CONNECTIONS;
         $this->onMessage = function ($connection, $buffer) {
+            self::installClientCleanup($connection);
+
+            if (($connection->context->proxyConnectPending ?? false) === true) {
+                if (!self::appendPendingBuffer($connection, $buffer)) {
+                    self::closeUpstream($connection);
+                    unset($connection->context->proxyConnectPending, $connection->context->proxyPendingBuffer);
+                    $connection->close("HTTP/1.1 413 Content Too Large\r\nConnection: close\r\n\r\n");
+                    return;
+                }
+
+                return;
+            }
+
+            $buffer = (string)($connection->context->proxyRequestHeaderBuffer ?? '') . $buffer;
+            $headerEnd = strpos($buffer, "\r\n\r\n");
+            if ($headerEnd === false) {
+                if (strlen($buffer) > self::MAX_REQUEST_HEADER_SIZE) {
+                    unset($connection->context->proxyRequestHeaderBuffer);
+                    self::cancelRequestHeaderTimer($connection);
+                    $connection->close("HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n");
+                    return;
+                }
+
+                $connection->context->proxyRequestHeaderBuffer = $buffer;
+                self::armRequestHeaderTimer($connection);
+                return;
+            }
+
+            if ($headerEnd + 4 > self::MAX_REQUEST_HEADER_SIZE) {
+                unset($connection->context->proxyRequestHeaderBuffer);
+                self::cancelRequestHeaderTimer($connection);
+                $connection->close("HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n");
+                return;
+            }
+
+            unset($connection->context->proxyRequestHeaderBuffer);
+            self::cancelRequestHeaderTimer($connection);
+
             $requestLine = strtok($buffer, "\r\n");
             $parts = $requestLine === false ? [] : explode(' ', trim($requestLine), 3);
             if (count($parts) !== 3 || $parts[0] === '' || $parts[1] === '' || !in_array($parts[0], ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'CONNECT'], true)) {
@@ -95,21 +138,67 @@ class Proxy extends Server
                 return;
             }
 
-            $remoteConnection = new Server\Connection\AsyncTcpConnection("tcp://$host:$port");
-            $remoteConnection->onError = static function ($remoteConnection, $code, $message) use ($connection) {
-                $connection->close("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
-            };
+            $requestPayload = substr($buffer, $headerEnd + 4);
+            $initialBuffer = $method === 'CONNECT' ? $requestPayload : $this->stripProxyHeaders($buffer);
+            if (!self::appendPendingBuffer($connection, $initialBuffer)) {
+                $connection->close("HTTP/1.1 413 Content Too Large\r\nConnection: close\r\n\r\n");
+                return;
+            }
 
-            $forwardedBuffer = $method === 'CONNECT' ? '' : $this->stripProxyHeaders($buffer);
-            $remoteConnection->onConnect = static function ($remoteConnection) use ($connection, $method, $forwardedBuffer) {
-                if ($method === 'CONNECT') {
-                    $connection->send("HTTP/1.1 200 Connection Established\r\n\r\n");
-                } else {
-                    $remoteConnection->send($forwardedBuffer);
+            $remoteConnection = new Server\Connection\AsyncTcpConnection("tcp://$host:$port");
+            $connection->context->proxyUpstream = $remoteConnection;
+            $connection->context->proxyConnectPending = true;
+
+            $remoteConnection->onError = static function ($remoteConnection) use ($connection): void {
+                if (($connection->context->proxyUpstream ?? null) !== $remoteConnection) {
+                    return;
                 }
 
-                $remoteConnection->pipe($connection);
-                $connection->pipe($remoteConnection);
+                unset(
+                    $connection->context->proxyUpstream,
+                    $connection->context->proxyConnectPending,
+                    $connection->context->proxyPendingBuffer,
+                );
+                $remoteConnection->close();
+                if ($connection->getStatus() === Server\Connection\TcpConnection::STATUS_ESTABLISHED) {
+                    $connection->close("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
+                }
+            };
+
+            $remoteConnection->onClose = static function ($remoteConnection) use ($connection): void {
+                if (($connection->context->proxyUpstream ?? null) !== $remoteConnection) {
+                    return;
+                }
+
+                unset($connection->context->proxyUpstream, $connection->context->proxyConnectPending, $connection->context->proxyPendingBuffer);
+                if ($connection->getStatus() === Server\Connection\TcpConnection::STATUS_ESTABLISHED) {
+                    $connection->close();
+                }
+            };
+
+            $remoteConnection->onConnect = static function ($remoteConnection) use ($connection, $method): void {
+                if (!self::clientCanUseUpstream($connection, $remoteConnection)) {
+                    $remoteConnection->close();
+                    return;
+                }
+
+                $pendingBuffer = (string)($connection->context->proxyPendingBuffer ?? '');
+                unset($connection->context->proxyConnectPending, $connection->context->proxyPendingBuffer);
+
+                $connection->onMessage = static fn ($source, $data) => $remoteConnection->send($data, true);
+                $remoteConnection->onMessage = static fn ($source, $data) => $connection->send($data, true);
+                $remoteConnection->onBufferFull = static fn () => $connection->pauseRecv();
+                $remoteConnection->onBufferDrain = static fn () => $connection->resumeRecv();
+                $connection->onBufferFull = static fn () => $remoteConnection->pauseRecv();
+                $connection->onBufferDrain = static fn () => $remoteConnection->resumeRecv();
+
+                if ($method === 'CONNECT') {
+                    $connection->send("HTTP/1.1 200 Connection Established\r\n\r\n");
+                }
+
+                if ($pendingBuffer !== '') {
+                    $remoteConnection->send($pendingBuffer, true);
+                }
             };
 
             $remoteConnection->connect();
@@ -130,6 +219,86 @@ class Proxy extends Server
 
         return in_array($host, $allowedHosts, true)
             && in_array($port, $this->allowedPorts, true);
+    }
+
+    private static function installClientCleanup(object $connection): void
+    {
+        if (($connection->context->proxyCleanupInstalled ?? false) === true) {
+            return;
+        }
+
+        $connection->context->proxyCleanupInstalled = true;
+        $userOnClose = $connection->onClose ?? null;
+        $connection->onClose = static function ($connection) use ($userOnClose): void {
+            self::cancelRequestHeaderTimer($connection);
+            self::closeUpstream($connection);
+            unset(
+                $connection->context->proxyConnectPending,
+                $connection->context->proxyPendingBuffer,
+                $connection->context->proxyRequestHeaderBuffer,
+            );
+
+            if (is_callable($userOnClose)) {
+                $userOnClose($connection);
+            }
+        };
+    }
+
+    private static function armRequestHeaderTimer(object $connection): void
+    {
+        if (isset($connection->context->proxyHeaderTimer)) {
+            return;
+        }
+
+        $eventLoop = $connection->eventLoop ?? null;
+        if ($eventLoop === null) {
+            $connection->close("HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n");
+            return;
+        }
+
+        $connection->context->proxyHeaderTimer = $eventLoop->delay(self::REQUEST_HEADER_TIMEOUT, static function () use ($connection): void {
+            unset($connection->context->proxyHeaderTimer, $connection->context->proxyRequestHeaderBuffer);
+            if ($connection->getStatus() === Server\Connection\TcpConnection::STATUS_ESTABLISHED) {
+                $connection->close("HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n");
+            }
+        });
+    }
+
+    private static function cancelRequestHeaderTimer(object $connection): void
+    {
+        $timerId = $connection->context->proxyHeaderTimer ?? 0;
+        unset($connection->context->proxyHeaderTimer);
+
+        if ($timerId > 0 && ($connection->eventLoop ?? null) !== null) {
+            $connection->eventLoop->offDelay((int)$timerId);
+        }
+    }
+
+    private static function appendPendingBuffer(object $connection, string $buffer): bool
+    {
+        $pendingBuffer = (string)($connection->context->proxyPendingBuffer ?? '') . $buffer;
+        if (strlen($pendingBuffer) > $connection->maxSendBufferSize) {
+            return false;
+        }
+
+        $connection->context->proxyPendingBuffer = $pendingBuffer;
+        return true;
+    }
+
+    private static function closeUpstream(object $connection): void
+    {
+        $upstream = $connection->context->proxyUpstream ?? null;
+        unset($connection->context->proxyUpstream);
+
+        if ($upstream instanceof Server\Connection\AsyncTcpConnection) {
+            $upstream->close();
+        }
+    }
+
+    private static function clientCanUseUpstream(object $connection, object $upstream): bool
+    {
+        return ($connection->context->proxyUpstream ?? null) === $upstream
+            && $connection->getStatus() === Server\Connection\TcpConnection::STATUS_ESTABLISHED;
     }
 
     private function isAuthorized(string $request): bool
